@@ -22,4 +22,150 @@ model Cliente {
   empresa   String?
   status    String   @default("ativo")
   createdAt DateTime @default(now())
+
+  integrations   Integration[]
+  conversations  AIConversation[]
+  integrationAccounts IntegrationAccount[]
+}
+
+enum IntegrationProvider {
+  META_ADS
+  GOOGLE_ADS
+  TIKTOK_ADS
+  GOOGLE_ANALYTICS
+  KOMMO
+  WHATSAPP
+  SHOPIFY
+  YAMPI
+  INTERNAL
+}
+
+enum IntegrationStatus {
+  ACTIVE
+  INACTIVE
+  ERROR
+  EXPIRED
+}
+
+enum AIMessageRole {
+  SYSTEM
+  USER
+  ASSISTANT
+  TOOL
+}
+
+enum AIActionStatus {
+  SUCCESS
+  ERROR
+  PENDING
+  CONFIRMED
+  REJECTED
+}
+
+model Integration {
+  id          String              @id @default(cuid())
+  clientId    String?
+  provider    IntegrationProvider
+  accountName String
+  accountId   String
+  status      IntegrationStatus
+  metadata    Json?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  client      Cliente?                @relation(fields: [clientId], references: [id])
+  credential  IntegrationCredential?
+  accounts    IntegrationAccount[]
+
+  @@index([clientId])
+  @@index([provider])
+  @@index([status])
+}
+
+model IntegrationAccount {
+  id                  String              @id @default(cuid())
+  integrationId       String
+  clientId            String?
+  provider            IntegrationProvider @default(META_ADS)
+  externalAccountId   String
+  externalAccountName String
+  currency            String?
+  timezoneName        String?
+  status              String?
+  isActive            Boolean             @default(true)
+  isDefault           Boolean             @default(false)
+  metadata            Json?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  integration         Integration         @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  client              Cliente?            @relation(fields: [clientId], references: [id])
+
+  @@unique([integrationId, externalAccountId])
+  @@index([clientId])
+  @@index([provider])
+  @@index([isActive])
+  @@index([isDefault])
+  @@index([externalAccountName])
+}
+
+model IntegrationCredential {
+  id            String      @id @default(cuid())
+  integrationId String      @unique
+  accessToken   String?
+  refreshToken  String?
+  expiresAt     DateTime?
+  tokenType     String?
+  scope         String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  integration   Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+}
+
+model AIConversation {
+  id        String      @id @default(cuid())
+  title     String?
+  clientId  String?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  client    Cliente?    @relation(fields: [clientId], references: [id])
+  messages  AIMessage[]
+  actionLogs AIActionLog[]
+
+  @@index([clientId])
+}
+
+model AIMessage {
+  id             String         @id @default(cuid())
+  conversationId String
+  role           AIMessageRole
+  content        String
+  toolName       String?
+  toolCallId     String?
+  createdAt      DateTime       @default(now())
+
+  conversation   AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([role])
+}
+
+model AIActionLog {
+  id             String              @id @default(cuid())
+  conversationId String?
+  provider       IntegrationProvider?
+  action         String
+  status         AIActionStatus
+  input          Json?
+  output         Json?
+  errorMessage   String?
+  createdAt      DateTime            @default(now())
+
+  conversation   AIConversation?     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([provider])
+  @@index([status])
 }
