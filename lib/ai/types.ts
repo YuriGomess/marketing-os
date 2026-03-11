@@ -15,11 +15,27 @@ export type AgentContext = {
   metadata?: Record<string, unknown>;
 };
 
+export type AgentActionResult = {
+  ok: boolean;
+  data?: unknown;
+  error?: string;
+  errorCategory?: string;
+  missingEnv?: string[];
+  foundEnv?: string[];
+  details?: unknown;
+};
+
+export type AgentToolExecutor = (
+  params: Record<string, unknown>,
+  context: AgentContext,
+) => Promise<AgentActionResult>;
+
 export type AgentToolDefinition = {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
   action?: string;
+  execute: AgentToolExecutor;
 };
 
 export type AgentExecutionResult = {
@@ -27,6 +43,8 @@ export type AgentExecutionResult = {
   message: string;
   toolsAvailable: string[];
   route: AgentRouteResult;
+  accountUsed?: Record<string, unknown> | null;
+  toolsUsed?: Array<Record<string, unknown>>;
   data?: Record<string, unknown>;
 };
 
