@@ -54,21 +54,40 @@ function getApiKeyPreview(value: string | undefined): string {
   return `${value.slice(0, 3)}...${value.slice(-2)}`;
 }
 
+function sanitizeModelName(value: string | undefined): { model: string; valid: boolean } {
+  const raw = value?.trim();
+  if (!raw) {
+    return { model: DEFAULT_OPENAI_MODEL, valid: false };
+  }
+
+  // Prevent accidental secret leakage when env is misconfigured.
+  if (raw.startsWith("sk-") || raw.includes("sk-proj-") || raw.length > 80) {
+    return { model: DEFAULT_OPENAI_MODEL, valid: false };
+  }
+
+  if (!/^[a-zA-Z0-9._:-]+$/.test(raw)) {
+    return { model: DEFAULT_OPENAI_MODEL, valid: false };
+  }
+
+  return { model: raw, valid: true };
+}
+
 export function getOpenAIConfigStatus(): OpenAIConfigStatus {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   const configuredModel = process.env.OPENAI_MODEL?.trim();
-  const model = configuredModel || DEFAULT_OPENAI_MODEL;
+  const sanitizedModel = sanitizeModelName(configuredModel);
+  const model = sanitizedModel.model;
 
   const missingEnv: string[] = [];
   if (!apiKey) missingEnv.push("OPENAI_API_KEY");
-  if (!configuredModel) missingEnv.push("OPENAI_MODEL");
+  if (!configuredModel || !sanitizedModel.valid) missingEnv.push("OPENAI_MODEL");
 
   if (missingEnv.length > 0) {
     return {
       ok: false,
       missingEnv,
       model,
-      usedFallbackModel: !configuredModel,
+      usedFallbackModel: !sanitizedModel.valid,
       message: `Configuracao OpenAI incompleta. Faltando: ${missingEnv.join(", ")}.`,
     };
   }

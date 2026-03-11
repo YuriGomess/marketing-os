@@ -43,11 +43,11 @@ function parseToolArguments(rawArguments: string): Record<string, unknown> {
   return {};
 }
 
-function buildConfigMissingMessage(missingEnv: string[], fallbackModel: string): string {
+function buildConfigMissingMessage(missingEnv: string[]): string {
   return [
     "Configuracao da LLM incompleta para o Ads Agent.",
     `Variaveis faltando: ${missingEnv.join(", ")}.`,
-    `Defina OPENAI_API_KEY e OPENAI_MODEL. Modelo fallback disponivel: ${fallbackModel}.`,
+    "Defina OPENAI_API_KEY e OPENAI_MODEL com valores validos.",
   ].join(" ");
 }
 
@@ -104,7 +104,7 @@ export async function runAdsAgent(
   if (!openaiConfig.ok) {
     return {
       agent: "ads",
-      message: buildConfigMissingMessage(openaiConfig.missingEnv, openaiConfig.model),
+      message: buildConfigMissingMessage(openaiConfig.missingEnv),
       toolsAvailable: adsTools.map((tool) => tool.name),
       route,
       accountUsed: null,
