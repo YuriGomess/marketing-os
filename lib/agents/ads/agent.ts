@@ -6,6 +6,7 @@ import type {
 } from "@/lib/ai/types";
 import { adsAgentPrompt } from "./prompt";
 import { adsTools } from "./tools";
+import { getAdsAgentRuntimeSettings } from "./config-store";
 import {
   generateOpenAIResponse,
   getOpenAIConfigStatus,
@@ -63,8 +64,10 @@ function extractResolvedAccount(data: unknown): ResolvedAccount | undefined {
 function mergeParamsWithContext(
   rawArgs: Record<string, unknown>,
   context: AgentContext,
+  thresholds: Record<string, number | undefined>,
+  toolName?: string,
 ): Record<string, unknown> {
-  return {
+  const enriched = {
     ...rawArgs,
     clientId:
       typeof rawArgs.clientId === "string"
@@ -85,6 +88,27 @@ function mergeParamsWithContext(
         ? rawArgs.limit
         : 25,
   };
+
+  if (
+    toolName === "analyzeMetaAccount" ||
+    toolName === "generateMetaPerformanceSummary" ||
+    toolName === "listMetaPerformanceAlerts"
+  ) {
+    return {
+      ...enriched,
+      thresholds: {
+        ctrLowThreshold: thresholds.ctrLowThreshold,
+        cpcHighThreshold: thresholds.cpcHighThreshold,
+        spendNoResultThreshold: thresholds.spendNoResultThreshold,
+        minSpendForEvaluation: thresholds.minSpendForEvaluation,
+        minImpressionsForEvaluation: thresholds.minImpressionsForEvaluation,
+      },
+    };
+  }
+
+  return {
+    ...enriched,
+  };
 }
 
 function toLLMToolCalls(toolCalls: LLMToolCall[]): LLMMessage["toolCalls"] {
@@ -99,13 +123,66 @@ export async function runAdsAgent(
   context: AgentContext,
   route: AgentRouteResult,
 ): Promise<AgentExecutionResult> {
+  let runtimeSettings: Awaited<ReturnType<typeof getAdsAgentRuntimeSettings>> | null = null;
+  try {
+    runtimeSettings = await getAdsAgentRuntimeSettings();
+  } catch {
+    runtimeSettings = null;
+  }
+
+  const activeTools = runtimeSettings
+    ? adsTools.filter((tool) => runtimeSettings.enabledToolNames.has(tool.name))
+    : adsTools;
+
+  const runtimePrompt = runtimeSettings
+    ? [
+        runtimeSettings.systemPrompt,
+        runtimeSettings.strategicContext
+          ? `\nContexto estrategico:\n${runtimeSettings.strategicContext}`
+          : "",
+        `\nModo de execucao atual: ${runtimeSettings.executionMode}.`,
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : adsAgentPrompt;
+
+  if (runtimeSettings && !runtimeSettings.isActive) {
+    return {
+      agent: "ads",
+      message:
+        "Ads Agent esta inativo na configuracao atual. Ative o agente em /configuracoes/agentes para continuar.",
+      toolsAvailable: activeTools.map((tool) => tool.name),
+      route,
+      accountUsed: null,
+      toolsUsed: [],
+      data: {
+        stage: "agent-inactive",
+      },
+    };
+  }
+
+  if (activeTools.length === 0) {
+    return {
+      agent: "ads",
+      message:
+        "Nenhuma tool do Ads Agent esta habilitada. Ative ao menos uma tool em /configuracoes/agentes.",
+      toolsAvailable: [],
+      route,
+      accountUsed: null,
+      toolsUsed: [],
+      data: {
+        stage: "tools-disabled",
+      },
+    };
+  }
+
   const openaiConfig = getOpenAIConfigStatus();
 
   if (!openaiConfig.ok) {
     return {
       agent: "ads",
       message: buildConfigMissingMessage(openaiConfig.missingEnv),
-      toolsAvailable: adsTools.map((tool) => tool.name),
+      toolsAvailable: activeTools.map((tool) => tool.name),
       route,
       accountUsed: null,
       toolsUsed: [],
@@ -122,7 +199,7 @@ export async function runAdsAgent(
   const llmMessages: LLMMessage[] = [
     {
       role: "system",
-      content: adsAgentPrompt,
+      content: runtimePrompt,
     },
     {
       role: "user",
@@ -137,18 +214,20 @@ export async function runAdsAgent(
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const llmResult = await generateOpenAIResponse({
       messages: llmMessages,
-      tools: adsTools.map((tool) => ({
+      tools: activeTools.map((tool) => ({
         name: tool.name,
         description: tool.description,
         inputSchema: tool.inputSchema,
       })),
+      modelOverride: runtimeSettings?.modelName,
+      temperature: runtimeSettings?.temperature,
     });
 
     if (!llmResult.ok) {
       return {
         agent: "ads",
         message: llmResult.error || "Falha ao executar resposta com LLM.",
-        toolsAvailable: adsTools.map((tool) => tool.name),
+        toolsAvailable: activeTools.map((tool) => tool.name),
         route,
         accountUsed,
         toolsUsed,
@@ -170,7 +249,7 @@ export async function runAdsAgent(
       return {
         agent: "ads",
         message: finalMessage,
-        toolsAvailable: adsTools.map((tool) => tool.name),
+        toolsAvailable: activeTools.map((tool) => tool.name),
         route,
         accountUsed,
         toolsUsed,
@@ -194,7 +273,7 @@ export async function runAdsAgent(
     });
 
     for (const toolCall of toolCalls) {
-      const tool = adsTools.find((entry) => entry.name === toolCall.name);
+      const tool = activeTools.find((entry) => entry.name === toolCall.name);
 
       if (!tool) {
         const errorResult: AgentActionResult = {
@@ -214,7 +293,18 @@ export async function runAdsAgent(
       }
 
       const parsedArgs = parseToolArguments(toolCall.arguments);
-      const finalArgs = mergeParamsWithContext(parsedArgs, context);
+      const finalArgs = mergeParamsWithContext(
+        parsedArgs,
+        context,
+        {
+          ctrLowThreshold: runtimeSettings?.thresholds.ctrLowThreshold,
+          cpcHighThreshold: runtimeSettings?.thresholds.cpcHighThreshold,
+          spendNoResultThreshold: runtimeSettings?.thresholds.spendNoResultThreshold,
+          minSpendForEvaluation: runtimeSettings?.thresholds.minSpendForEvaluation,
+          minImpressionsForEvaluation: runtimeSettings?.thresholds.minImpressionsForEvaluation,
+        },
+        tool.name,
+      );
       const result = await tool.execute(finalArgs, context);
 
       const resolvedAccount = extractResolvedAccount(result.data);
@@ -241,7 +331,7 @@ export async function runAdsAgent(
     agent: "ads",
     message:
       "Limite de iteracoes com tools atingido. Reformule a pergunta ou especifique a conta e periodo.",
-    toolsAvailable: adsTools.map((tool) => tool.name),
+    toolsAvailable: activeTools.map((tool) => tool.name),
     route,
     accountUsed,
     toolsUsed,

@@ -7,4 +7,5 @@ export const navItems = [
   { href: "/relatorios", label: "Relatórios" },
   { href: "/ia", label: "IA" },
   { href: "/configuracoes", label: "Configurações" },
+  { href: "/configuracoes/agentes", label: "Agentes" },
 ];

@@ -103,6 +103,8 @@ export function getOpenAIConfigStatus(): OpenAIConfigStatus {
 export async function generateOpenAIResponse(input: {
   messages: LLMMessage[];
   tools?: LLMToolDefinition[];
+  modelOverride?: string | null;
+  temperature?: number | null;
 }): Promise<LLMResponse> {
   const config = getOpenAIConfigStatus();
   const apiKey = process.env.OPENAI_API_KEY?.trim();
@@ -156,6 +158,13 @@ export async function generateOpenAIResponse(input: {
   });
 
   try {
+    const override = sanitizeModelName(input.modelOverride || undefined);
+    const model = input.modelOverride && override.valid ? override.model : config.model;
+    const temperature =
+      typeof input.temperature === "number" && Number.isFinite(input.temperature)
+        ? input.temperature
+        : 0.2;
+
     const response = await fetch(OPENAI_CHAT_COMPLETIONS_URL, {
       method: "POST",
       headers: {
@@ -163,8 +172,8 @@ export async function generateOpenAIResponse(input: {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: config.model,
-        temperature: 0.2,
+        model,
+        temperature,
         messages: messagePayload,
         tools: toolPayload.length > 0 ? toolPayload : undefined,
         tool_choice: toolPayload.length > 0 ? "auto" : undefined,

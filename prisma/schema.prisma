@@ -62,6 +62,16 @@ enum AIActionStatus {
   REJECTED
 }
 
+enum AgentType {
+  ADS
+}
+
+enum AgentExecutionMode {
+  READ_ONLY
+  SUGGEST_ONLY
+  CONFIRM_BEFORE_ACTION
+}
+
 model Integration {
   id          String              @id @default(cuid())
   clientId    String?
@@ -168,4 +178,63 @@ model AIActionLog {
   @@index([conversationId])
   @@index([provider])
   @@index([status])
+}
+
+model Agent {
+  id         String           @id @default(cuid())
+  name       String
+  slug       String           @unique
+  type       AgentType
+  isActive   Boolean          @default(true)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  config     AgentConfig?
+  tools      AgentTool[]
+  thresholds AgentThreshold[]
+
+  @@index([type])
+  @@index([isActive])
+}
+
+model AgentConfig {
+  id               String             @id @default(cuid())
+  agentId          String             @unique
+  systemPrompt     String
+  strategicContext String?
+  executionMode    AgentExecutionMode @default(READ_ONLY)
+  modelName        String?
+  temperature      Float?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  agent            Agent              @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+model AgentTool {
+  id        String   @id @default(cuid())
+  agentId   String
+  toolName  String
+  isEnabled Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, toolName])
+  @@index([toolName])
+}
+
+model AgentThreshold {
+  id        String   @id @default(cuid())
+  agentId   String
+  key       String
+  value     Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, key])
+  @@index([key])
 }
