@@ -72,6 +72,71 @@ enum AgentExecutionMode {
   CONFIRM_BEFORE_ACTION
 }
 
+enum AutomationProvider {
+  META_ADS
+  WHATSAPP
+  GOOGLE_ADS
+  TIKTOK_ADS
+  FINANCE
+  CRM
+  TASKS
+  NOTIFICATIONS
+  INTERNAL
+}
+
+enum AutomationTriggerType {
+  CRON
+  MANUAL
+  EVENT
+}
+
+enum AutomationExecutionMode {
+  SIMULATE
+  LIVE
+}
+
+enum AutomationOperator {
+  GREATER_THAN
+  GREATER_THAN_OR_EQUAL
+  LESS_THAN
+  LESS_THAN_OR_EQUAL
+  EQUAL
+  NOT_EQUAL
+  CONTAINS
+  NOT_CONTAINS
+}
+
+enum AutomationActionType {
+  NOTIFY
+  ADJUST_BUDGET
+  CREATE_TASK
+  CREATE_ALERT
+  CALL_WEBHOOK
+}
+
+enum AutomationRunStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  PARTIAL_SUCCESS
+  FAILED
+  SKIPPED
+}
+
+enum AutomationScopeEntityType {
+  CLIENT
+  INTEGRATION
+  ACCOUNT
+  CAMPAIGN
+  ADSET
+  AD
+  CONTACT
+  DEAL
+  TASK
+  CHANNEL
+  CUSTOM
+}
+
 model Integration {
   id          String              @id @default(cuid())
   clientId    String?
@@ -237,4 +302,96 @@ model AgentThreshold {
 
   @@unique([agentId, key])
   @@index([key])
+}
+
+model Automation {
+  id             String                    @id @default(cuid())
+  name           String
+  description    String?
+  provider       AutomationProvider
+  triggerType    AutomationTriggerType     @default(CRON)
+  cronExpression String
+  executionMode  AutomationExecutionMode   @default(SIMULATE)
+  isActive       Boolean                   @default(true)
+  isDraft        Boolean                   @default(false)
+  draftPayload   Json?
+  lastRunAt      DateTime?
+  nextRunAt      DateTime?
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+
+  scopes         AutomationScope[]
+  rules          AutomationRule[]
+  actions        AutomationAction[]
+  runs           AutomationRun[]
+
+  @@index([provider])
+  @@index([isActive])
+  @@index([nextRunAt])
+  @@index([triggerType])
+}
+
+model AutomationScope {
+  id           String                    @id @default(cuid())
+  automationId String
+  entityType   AutomationScopeEntityType
+  entityId     String
+  metadata     Json?
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+
+  automation   Automation                @relation(fields: [automationId], references: [id], onDelete: Cascade)
+
+  @@index([automationId])
+  @@index([entityType])
+}
+
+model AutomationRule {
+  id           String             @id @default(cuid())
+  automationId String
+  metricKey    String
+  operator     AutomationOperator
+  value        Float
+  metadata     Json?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  automation   Automation         @relation(fields: [automationId], references: [id], onDelete: Cascade)
+
+  @@index([automationId])
+  @@index([metricKey])
+}
+
+model AutomationAction {
+  id           String               @id @default(cuid())
+  automationId String
+  actionType   AutomationActionType
+  payload      Json?
+  sortOrder    Int                  @default(0)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  automation   Automation           @relation(fields: [automationId], references: [id], onDelete: Cascade)
+
+  @@index([automationId])
+  @@index([actionType])
+  @@index([sortOrder])
+}
+
+model AutomationRun {
+  id           String              @id @default(cuid())
+  automationId String
+  status       AutomationRunStatus @default(PENDING)
+  input        Json?
+  output       Json?
+  errorMessage String?
+  startedAt    DateTime            @default(now())
+  finishedAt   DateTime?
+  createdAt    DateTime            @default(now())
+
+  automation   Automation          @relation(fields: [automationId], references: [id], onDelete: Cascade)
+
+  @@index([automationId])
+  @@index([status])
+  @@index([startedAt])
 }
