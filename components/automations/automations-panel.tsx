@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { AutomationAICreator } from "@/components/automations/automation-ai-creator";
+import type { AutomationDraft } from "@/lib/automations/draft";
 
 type AutomationProvider =
   | "META_ADS"
@@ -268,6 +270,48 @@ function formFromRecord(record: AutomationRecord): AutomationFormState {
         ? record.actions.map((action) => ({
             actionType: action.actionType,
             sortOrder: String(action.sortOrder),
+            payloadText: serializeJson(action.payload),
+          }))
+        : [{ actionType: "NOTIFY", sortOrder: "0", payloadText: "" }],
+  };
+}
+
+function formFromAIDraft(draft: AutomationDraft): AutomationFormState {
+  return {
+    id: null,
+    name: draft.name,
+    description: draft.description || "",
+    provider: draft.provider,
+    triggerType: draft.triggerType,
+    cronExpression: draft.cronExpression,
+    executionMode: draft.executionMode,
+    isActive: draft.isActive,
+    isDraft: true,
+    draftPayloadText: serializeJson(draft.draftPayload),
+    scopes:
+      draft.scopes.length > 0
+        ? draft.scopes.map((scope) => ({
+            entityType: scope.entityType,
+            entityId: scope.entityId,
+            metadataText: serializeJson(scope.metadata),
+          }))
+        : [{ entityType: "ACCOUNT", entityId: "", metadataText: "" }],
+    rules:
+      draft.rules.length > 0
+        ? draft.rules.map((rule) => ({
+            metricKey: rule.metricKey,
+            operator: rule.operator,
+            value: String(rule.value),
+            metadataText: serializeJson(rule.metadata),
+          }))
+        : [{ metricKey: "", operator: "GREATER_THAN", value: "0", metadataText: "" }],
+    actions:
+      draft.actions.length > 0
+        ? draft.actions.map((action, index) => ({
+            actionType: action.actionType,
+            sortOrder: String(
+              typeof action.sortOrder === "number" ? action.sortOrder : index,
+            ),
             payloadText: serializeJson(action.payload),
           }))
         : [{ actionType: "NOTIFY", sortOrder: "0", payloadText: "" }],
@@ -608,13 +652,28 @@ export function AutomationsPanel() {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={openNew}
-          className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-slate-950 hover:brightness-110"
-        >
-          Nova automacao
-        </button>
+        <div className="flex flex-wrap items-start gap-2">
+          <AutomationAICreator
+            onCreated={loadAutomations}
+            onFeedback={setFeedback}
+            onEditLater={(draft) => {
+              setForm(formFromAIDraft(draft));
+              setFormOpen(true);
+              setFeedback({
+                type: "success",
+                message: "Draft da IA carregado no formulario para ajustes.",
+              });
+            }}
+          />
+
+          <button
+            type="button"
+            onClick={openNew}
+            className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-slate-950 hover:brightness-110"
+          >
+            Nova automacao
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2 rounded-2xl border border-border bg-panel p-4">
