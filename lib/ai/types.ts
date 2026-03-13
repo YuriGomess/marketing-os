@@ -1,10 +1,19 @@
 import { IntegrationProvider } from "@prisma/client";
-
-export type AgentName = "ads";
+import type {
+  AgentName,
+  OrchestrationEntities,
+  OrchestratorDecision,
+  ResponseMode,
+} from "@/lib/ai/orchestration-types";
 
 export type AgentRouteResult = {
   agent: AgentName;
-  confidence: "high" | "fallback";
+  selectedAgent: AgentName;
+  mode: ResponseMode;
+  confidence: number;
+  reason: string;
+  normalizedIntent: string;
+  extractedEntities: OrchestrationEntities;
   matchedTerms: string[];
 };
 
@@ -40,12 +49,15 @@ export type AgentToolDefinition = {
 
 export type AgentExecutionResult = {
   agent: AgentName;
+  mode: ResponseMode;
   message: string;
   toolsAvailable: string[];
+  orchestrator: OrchestratorDecision;
   route: AgentRouteResult;
   accountUsed?: Record<string, unknown> | null;
   toolsUsed?: Array<Record<string, unknown>>;
   data?: Record<string, unknown>;
+  error?: string | null;
 };
 
 // Compat layer for existing stubs still useful in this stage.

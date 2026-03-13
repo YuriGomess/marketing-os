@@ -1,13 +1,16 @@
 import type { AgentExecutionResult, AgentRouteResult } from "@/lib/ai/types";
+import type { OrchestratorDecision } from "@/lib/ai/orchestration-types";
 import { whatsappAgentPrompt } from "@/lib/agents/whatsapp/prompt";
 import { whatsappTools } from "@/lib/agents/whatsapp/tools";
 
 export async function runWhatsappAgent(input: {
   message: string;
   route: AgentRouteResult;
+  orchestrator: OrchestratorDecision;
 }): Promise<AgentExecutionResult> {
   return {
-    agent: "ads",
+    agent: "whatsapp",
+    mode: input.route.mode,
     message: [
       "Base do WhatsApp Agent criada.",
       "Nesta etapa ele ainda nao executa fluxo completo.",
@@ -15,11 +18,13 @@ export async function runWhatsappAgent(input: {
       `Tools registradas: ${whatsappTools.map((tool) => tool.name).join(", ")}.`,
     ].join(" "),
     toolsAvailable: whatsappTools.map((tool) => tool.name),
+    orchestrator: input.orchestrator,
     route: input.route,
     accountUsed: null,
     toolsUsed: [],
     data: {
       stage: "whatsapp-agent-base",
     },
+    error: null,
   };
 }

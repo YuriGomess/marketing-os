@@ -48,14 +48,24 @@ export function routeAgent(message: string): AgentRouteResult {
   if (matchedTerms.length > 0) {
     return {
       agent: "ads",
-      confidence: "high",
+      selectedAgent: "ads",
+      mode: "analysis",
+      confidence: 0.9,
+      reason: "Palavras-chave de Ads detectadas na solicitacao.",
+      normalizedIntent: normalizedMessage,
+      extractedEntities: {},
       matchedTerms: [...matchedTerms],
     };
   }
 
   return {
     agent: "ads",
-    confidence: "fallback",
+    selectedAgent: "ads",
+    mode: "generic",
+    confidence: 0.4,
+    reason: "Sem termos especificos detectados; fallback para Ads.",
+    normalizedIntent: normalizedMessage,
+    extractedEntities: {},
     matchedTerms: [],
   };
 }

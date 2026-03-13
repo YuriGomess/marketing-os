@@ -4,6 +4,7 @@ import type {
   AgentExecutionResult,
   AgentRouteResult,
 } from "@/lib/ai/types";
+import type { OrchestratorDecision } from "@/lib/ai/orchestration-types";
 import { adsAgentPrompt } from "./prompt";
 import { adsTools } from "./tools";
 import { getAdsAgentRuntimeSettings } from "./config-store";
@@ -91,6 +92,7 @@ function mergeParamsWithContext(
 
   if (
     toolName === "analyzeMetaAccount" ||
+    toolName === "getMetaAccountDeepContext" ||
     toolName === "generateMetaPerformanceSummary" ||
     toolName === "listMetaPerformanceAlerts"
   ) {
@@ -111,6 +113,36 @@ function mergeParamsWithContext(
   };
 }
 
+function getModeInstruction(mode: AgentRouteResult["mode"]): string {
+  if (mode === "report") {
+    return [
+      "Modo de resposta: report.",
+      "Entregue em secoes curtas:",
+      "1) Conta e periodo",
+      "2) Sinais principais",
+      "3) Alertas criticos",
+      "4) Plano recomendado",
+    ].join(" ");
+  }
+
+  if (mode === "execution") {
+    return [
+      "Modo de resposta: execution.",
+      "Responda com plano em passos numerados, incluindo pre-condicao, acao e criterio de sucesso.",
+      "Nao execute mudancas destrutivas automaticamente.",
+    ].join(" ");
+  }
+
+  if (mode === "analysis") {
+    return [
+      "Modo de resposta: analysis.",
+      "Priorize causa-raiz, impacto e ordem de prioridade para intervencao.",
+    ].join(" ");
+  }
+
+  return "Modo de resposta: generic. Responda direto e objetivo.";
+}
+
 function toLLMToolCalls(toolCalls: LLMToolCall[]): LLMMessage["toolCalls"] {
   return toolCalls.map((toolCall) => ({
     id: toolCall.id,
@@ -119,10 +151,22 @@ function toLLMToolCalls(toolCalls: LLMToolCall[]): LLMMessage["toolCalls"] {
   }));
 }
 
+function toDecision(route: AgentRouteResult): OrchestratorDecision {
+  return {
+    selectedAgent: route.selectedAgent,
+    mode: route.mode,
+    confidence: route.confidence,
+    reason: route.reason,
+    normalizedIntent: route.normalizedIntent,
+    extractedEntities: route.extractedEntities,
+  };
+}
+
 export async function runAdsAgent(
   context: AgentContext,
   route: AgentRouteResult,
 ): Promise<AgentExecutionResult> {
+  const orchestrator = toDecision(route);
   let runtimeSettings: Awaited<ReturnType<typeof getAdsAgentRuntimeSettings>> | null = null;
   try {
     runtimeSettings = await getAdsAgentRuntimeSettings();
@@ -149,30 +193,36 @@ export async function runAdsAgent(
   if (runtimeSettings && !runtimeSettings.isActive) {
     return {
       agent: "ads",
+      mode: route.mode,
       message:
         "Ads Agent esta inativo na configuracao atual. Ative o agente em /configuracoes/agentes para continuar.",
       toolsAvailable: activeTools.map((tool) => tool.name),
+      orchestrator,
       route,
       accountUsed: null,
       toolsUsed: [],
       data: {
         stage: "agent-inactive",
       },
+      error: null,
     };
   }
 
   if (activeTools.length === 0) {
     return {
       agent: "ads",
+      mode: route.mode,
       message:
         "Nenhuma tool do Ads Agent esta habilitada. Ative ao menos uma tool em /configuracoes/agentes.",
       toolsAvailable: [],
+      orchestrator,
       route,
       accountUsed: null,
       toolsUsed: [],
       data: {
         stage: "tools-disabled",
       },
+      error: null,
     };
   }
 
@@ -181,8 +231,10 @@ export async function runAdsAgent(
   if (!openaiConfig.ok) {
     return {
       agent: "ads",
+      mode: route.mode,
       message: buildConfigMissingMessage(openaiConfig.missingEnv),
       toolsAvailable: activeTools.map((tool) => tool.name),
+      orchestrator,
       route,
       accountUsed: null,
       toolsUsed: [],
@@ -193,6 +245,7 @@ export async function runAdsAgent(
         accountUsed: null,
         toolsUsed: [],
       },
+      error: null,
     };
   }
 
@@ -200,6 +253,10 @@ export async function runAdsAgent(
     {
       role: "system",
       content: runtimePrompt,
+    },
+    {
+      role: "system",
+      content: getModeInstruction(route.mode),
     },
     {
       role: "user",
@@ -226,8 +283,10 @@ export async function runAdsAgent(
     if (!llmResult.ok) {
       return {
         agent: "ads",
+        mode: route.mode,
         message: llmResult.error || "Falha ao executar resposta com LLM.",
         toolsAvailable: activeTools.map((tool) => tool.name),
+        orchestrator,
         route,
         accountUsed,
         toolsUsed,
@@ -238,6 +297,7 @@ export async function runAdsAgent(
           accountUsed,
           toolsUsed,
         },
+        error: llmResult.error || "llm_error",
       };
     }
 
@@ -248,8 +308,10 @@ export async function runAdsAgent(
 
       return {
         agent: "ads",
+        mode: route.mode,
         message: finalMessage,
         toolsAvailable: activeTools.map((tool) => tool.name),
+        orchestrator,
         route,
         accountUsed,
         toolsUsed,
@@ -263,6 +325,7 @@ export async function runAdsAgent(
             ok: result.ok,
           })),
         },
+        error: null,
       };
     }
 
@@ -329,9 +392,11 @@ export async function runAdsAgent(
 
   return {
     agent: "ads",
+    mode: route.mode,
     message:
       "Limite de iteracoes com tools atingido. Reformule a pergunta ou especifique a conta e periodo.",
     toolsAvailable: activeTools.map((tool) => tool.name),
+    orchestrator,
     route,
     accountUsed,
     toolsUsed,
@@ -340,5 +405,6 @@ export async function runAdsAgent(
       accountUsed,
       toolsUsed,
     },
+    error: "llm_max_iterations",
   };
 }

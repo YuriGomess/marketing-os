@@ -10,6 +10,7 @@ import {
   generateMetaPerformanceSummaryAction,
   listMetaPerformanceAlertsAction,
 } from "@/lib/actions/ads/generate-meta-summary";
+import { getMetaAccountDeepContextAction } from "@/lib/agents/ads/context-builder";
 
 export const adsTools: AgentToolDefinition[] = [
   {
@@ -119,6 +120,24 @@ export const adsTools: AgentToolDefinition[] = [
       },
     },
     execute: async (params) => analyzeMetaAccountAction(params),
+  },
+  {
+    name: "getMetaAccountDeepContext",
+    description:
+      "Monta contexto profundo da conta com risco, alertas, foco tatico e recomendacoes priorizadas.",
+    action: "getMetaAccountDeepContextAction",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        accountId: { type: "string" },
+        accountName: { type: "string" },
+        clientId: { type: "string" },
+        datePreset: { type: "string" },
+        limit: { type: "number" },
+      },
+    },
+    execute: async (params) => getMetaAccountDeepContextAction(params),
   },
   {
     name: "generateMetaPerformanceSummary",
