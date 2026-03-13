@@ -86,7 +86,12 @@ export async function createEvolutionInstance(
     body: {
       instanceName: input.name,
       qrcode: true,
-      webhook: input.webhookUrl || undefined,
+      webhook: input.webhookUrl
+        ? {
+            url: input.webhookUrl,
+            enabled: true,
+          }
+        : undefined,
       integration: "WHATSAPP-BAILEYS",
     },
   });
