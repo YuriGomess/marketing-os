@@ -137,6 +137,44 @@ enum AutomationScopeEntityType {
   CUSTOM
 }
 
+enum WhatsappProvider {
+  EVOLUTION
+  META_CLOUD
+  OFFICIAL
+  INTERNAL
+}
+
+enum WhatsappInstanceStatus {
+  DISCONNECTED
+  CONNECTING
+  QRCODE
+  CONNECTED
+  ERROR
+}
+
+enum WhatsappConversationStatus {
+  OPEN
+  ARCHIVED
+  CLOSED
+}
+
+enum WhatsappMessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum WhatsappMessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  AUDIO
+  DOCUMENT
+  STICKER
+  LOCATION
+  CONTACT
+  UNKNOWN
+}
+
 model Integration {
   id          String              @id @default(cuid())
   clientId    String?
@@ -394,4 +432,114 @@ model AutomationRun {
   @@index([automationId])
   @@index([status])
   @@index([startedAt])
+}
+
+model WhatsappInstance {
+  id                 String                 @id @default(cuid())
+  name               String
+  provider           WhatsappProvider
+  externalInstanceId String?
+  status             WhatsappInstanceStatus @default(DISCONNECTED)
+  phoneNumber        String?
+  qrCode             String?
+  webhookUrl         String?
+  metadata           Json?
+  connectedAt        DateTime?
+  disconnectedAt     DateTime?
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  contacts           WhatsappContact[]
+  conversations      WhatsappConversation[]
+  messages           WhatsappMessage[]
+  eventLogs          WhatsappEventLog[]
+
+  @@index([provider])
+  @@index([status])
+  @@index([externalInstanceId])
+}
+
+model WhatsappContact {
+  id                String           @id @default(cuid())
+  instanceId        String
+  externalContactId String
+  name              String?
+  phone             String
+  metadata          Json?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  instance          WhatsappInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  conversations     WhatsappConversation[]
+  messages          WhatsappMessage[]
+
+  @@unique([instanceId, externalContactId])
+  @@index([instanceId])
+  @@index([phone])
+}
+
+model WhatsappConversation {
+  id                     String                     @id @default(cuid())
+  instanceId             String
+  contactId              String
+  externalConversationId String?
+  lastMessageAt          DateTime?
+  unreadCount            Int                        @default(0)
+  status                 WhatsappConversationStatus @default(OPEN)
+  metadata               Json?
+  createdAt              DateTime                   @default(now())
+  updatedAt              DateTime                   @updatedAt
+
+  instance               WhatsappInstance           @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  contact                WhatsappContact            @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  messages               WhatsappMessage[]
+
+  @@unique([instanceId, contactId])
+  @@index([instanceId])
+  @@index([contactId])
+  @@index([lastMessageAt])
+  @@index([status])
+}
+
+model WhatsappMessage {
+  id                String                   @id @default(cuid())
+  instanceId        String
+  conversationId    String
+  contactId         String?
+  externalMessageId String?
+  direction         WhatsappMessageDirection
+  messageType       WhatsappMessageType      @default(TEXT)
+  textContent       String?
+  mediaUrl          String?
+  rawPayload        Json?
+  sentAt            DateTime?
+  receivedAt        DateTime?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  instance          WhatsappInstance         @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  conversation      WhatsappConversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  contact           WhatsappContact?         @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@index([instanceId])
+  @@index([conversationId])
+  @@index([contactId])
+  @@index([externalMessageId])
+  @@index([direction])
+  @@index([createdAt])
+}
+
+model WhatsappEventLog {
+  id          String           @id @default(cuid())
+  instanceId  String?
+  eventType   String
+  payload     Json
+  processedAt DateTime?
+  createdAt   DateTime         @default(now())
+
+  instance    WhatsappInstance? @relation(fields: [instanceId], references: [id], onDelete: SetNull)
+
+  @@index([instanceId])
+  @@index([eventType])
+  @@index([createdAt])
 }
