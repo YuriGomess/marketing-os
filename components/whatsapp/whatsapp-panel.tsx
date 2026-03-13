@@ -85,6 +85,7 @@ export function WhatsappPanel() {
   const [creating, setCreating] = useState(false);
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [refreshingQrId, setRefreshingQrId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
   const [newInstanceName, setNewInstanceName] = useState("");
@@ -367,6 +368,44 @@ export function WhatsappPanel() {
     }
   }
 
+  async function deleteInstance(instanceId: string, instanceName: string) {
+    const confirmed = window.confirm(
+      `Deseja excluir a instancia \"${instanceName}\"? Esta acao remove conversas e mensagens vinculadas.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingId(instanceId);
+    setFeedback(null);
+
+    try {
+      const response = await fetch(`/api/whatsapp/instances/${instanceId}`, {
+        method: "DELETE",
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "Falha ao excluir instancia.");
+      }
+
+      setFeedback({ type: "success", message: "Instancia excluida com sucesso." });
+      setSelectedInstanceId((current) => (current === instanceId ? null : current));
+      await loadInstances(false);
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Falha ao excluir instancia WhatsApp.",
+      });
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <section className="space-y-6">
       <div>
@@ -473,6 +512,14 @@ export function WhatsappPanel() {
                   className="rounded-lg border border-border bg-panel-strong px-3 py-2 text-sm text-slate-100 disabled:opacity-60"
                 >
                   {refreshingQrId === selectedInstance.id ? "Atualizando..." : "Atualizar QR"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void deleteInstance(selectedInstance.id, selectedInstance.name)}
+                  disabled={deletingId === selectedInstance.id}
+                  className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200 disabled:opacity-60"
+                >
+                  {deletingId === selectedInstance.id ? "Excluindo..." : "Excluir"}
                 </button>
               </div>
 

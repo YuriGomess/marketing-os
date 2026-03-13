@@ -96,6 +96,12 @@ export async function getWhatsappInstanceById(id: string) {
   });
 }
 
+export async function deleteWhatsappInstanceById(id: string) {
+  return prisma.whatsappInstance.delete({
+    where: { id },
+  });
+}
+
 export async function updateWhatsappInstanceConnection(
   id: string,
   input: {
