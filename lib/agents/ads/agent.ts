@@ -71,12 +71,31 @@ function buildConfigMissingMessage(missingEnv: string[]): string {
 }
 
 function extractResolvedAccount(data: unknown): ResolvedAccount | undefined {
+  if (!data || typeof data !== "object") {
+    return undefined;
+  }
+
   const asAny = data as {
     resolvedAccount?: ResolvedAccount;
     account?: { resolvedAccount?: ResolvedAccount };
   };
 
   return asAny.account?.resolvedAccount || asAny.resolvedAccount;
+}
+
+function inferNamedEntityFromMessage(message: string, entity: "conta" | "cliente"): string | undefined {
+  const escaped = entity === "conta" ? "conta" : "cliente";
+  const match = message.match(new RegExp(`${escaped}\\s+([\\w\\s\\-]+)`, "i"));
+  const raw = match?.[1]?.trim();
+
+  if (!raw) return undefined;
+
+  const cleaned = raw
+    .replace(/\b(ultimos|ultimas|ultimo|ultima|dias|dia|com|para|no|na|nos|nas|de|do|da|em)\b.*$/i, "")
+    .replace(/[?.!,;:]+$/g, "")
+    .trim();
+
+  return cleaned.length >= 2 ? cleaned : undefined;
 }
 
 function mergeParamsWithContext(
@@ -97,6 +116,22 @@ function mergeParamsWithContext(
         : typeof context.metadata?.accountId === "string"
           ? context.metadata.accountId
           : undefined,
+    accountName:
+      typeof rawArgs.accountName === "string"
+        ? rawArgs.accountName
+        : typeof context.metadata?.accountName === "string"
+          ? context.metadata.accountName
+          : inferNamedEntityFromMessage(context.message, "conta"),
+    clientName:
+      typeof rawArgs.clientName === "string"
+        ? rawArgs.clientName
+        : typeof context.metadata?.clientName === "string"
+          ? context.metadata.clientName
+          : inferNamedEntityFromMessage(context.message, "cliente"),
+    userMessage:
+      typeof rawArgs.userMessage === "string"
+        ? rawArgs.userMessage
+        : context.message,
     datePreset:
       typeof rawArgs.datePreset === "string"
         ? rawArgs.datePreset
@@ -190,7 +225,11 @@ async function prefetchAnalysisContext(input: {
     accountName:
       typeof input.context.metadata?.accountName === "string"
         ? input.context.metadata.accountName
-        : undefined,
+        : inferNamedEntityFromMessage(input.context.message, "conta"),
+    clientName:
+      typeof input.context.metadata?.clientName === "string"
+        ? input.context.metadata.clientName
+        : inferNamedEntityFromMessage(input.context.message, "cliente"),
     clientId: input.context.clientId,
     datePreset: "last_7d",
     limit: 100,
@@ -277,6 +316,14 @@ export async function runAdsAgent(
     runtimeSettings = null;
   }
 
+  const hardAnalyticsGuardrails = [
+    "Regras obrigatorias de analise:",
+    "1) Em modo analysis, use contexto rico completo (nao responder so com CPM/CPC).",
+    "2) Priorize eventos normalizados: landingPageViews, addToCart, initiateCheckout, purchases, conversionValue, messagingConversations, followers, leads.",
+    "3) Use metricas derivadas: lpvRate, addToCartRate, checkoutRate, roas, costPerMessage, costPerFollower, purchaseCost.",
+    "4) Se faltar dado em algum campo, explicite 'dados indisponiveis' ao inves de omitir.",
+  ].join("\n");
+
   const activeTools = runtimeSettings
     ? adsTools.filter((tool) => runtimeSettings.enabledToolNames.has(tool.name))
     : adsTools;
@@ -284,6 +331,8 @@ export async function runAdsAgent(
   const runtimePrompt = runtimeSettings
     ? [
         runtimeSettings.systemPrompt,
+        "\n",
+        hardAnalyticsGuardrails,
         runtimeSettings.strategicContext
           ? `\nContexto estrategico:\n${runtimeSettings.strategicContext}`
           : "",
@@ -291,7 +340,7 @@ export async function runAdsAgent(
       ]
         .filter(Boolean)
         .join("\n")
-    : adsAgentPrompt;
+    : `${adsAgentPrompt}\n\n${hardAnalyticsGuardrails}`;
 
   if (runtimeSettings && !runtimeSettings.isActive) {
     return {

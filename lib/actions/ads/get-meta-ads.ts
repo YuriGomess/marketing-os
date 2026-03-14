@@ -24,6 +24,7 @@ export async function getMetaAdsAction(params: Record<string, unknown>) {
       accountId: typeof params.accountId === "string" ? params.accountId : undefined,
       accountName: typeof params.accountName === "string" ? params.accountName : undefined,
       clientId: typeof params.clientId === "string" ? params.clientId : undefined,
+      clientName: typeof params.clientName === "string" ? params.clientName : undefined,
     });
 
     const data = await getMetaAds({

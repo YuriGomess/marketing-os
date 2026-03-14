@@ -24,6 +24,7 @@ export async function getMetaAccountOverviewAction(params: Record<string, unknow
       accountId: typeof params.accountId === "string" ? params.accountId : undefined,
       accountName: typeof params.accountName === "string" ? params.accountName : undefined,
       clientId: typeof params.clientId === "string" ? params.clientId : undefined,
+      clientName: typeof params.clientName === "string" ? params.clientName : undefined,
     });
 
     const data = await getMetaAccountOverview({

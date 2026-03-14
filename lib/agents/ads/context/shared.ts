@@ -36,6 +36,7 @@ export async function fetchInsightsByLevel(
   const response = await getMetaInsightsAction({
     accountId: input.accountId,
     accountName: input.accountName,
+    clientName: input.clientName,
     clientId: input.clientId,
     datePreset: input.datePreset,
     days: input.days,

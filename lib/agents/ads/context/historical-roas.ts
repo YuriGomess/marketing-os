@@ -10,6 +10,7 @@ function toInput(params: Record<string, unknown>) {
   return {
     accountId: typeof params.accountId === "string" ? params.accountId : undefined,
     accountName: typeof params.accountName === "string" ? params.accountName : undefined,
+    clientName: typeof params.clientName === "string" ? params.clientName : undefined,
     clientId: typeof params.clientId === "string" ? params.clientId : undefined,
     limit: typeof params.limit === "number" ? params.limit : 100,
   };
@@ -23,6 +24,7 @@ export async function getMetaHistoricalRoasContextAction(params: Record<string, 
       const response = await getMetaInsightsAction({
         accountId: input.accountId,
         accountName: input.accountName,
+        clientName: input.clientName,
         clientId: input.clientId,
         level: "campaign",
         days,

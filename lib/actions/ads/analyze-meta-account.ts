@@ -12,6 +12,7 @@ import { getMetaInsightsAction } from "./get-meta-insights";
 type ActionParams = {
   accountId?: string;
   accountName?: string;
+  clientName?: string;
   clientId?: string;
   datePreset?: string;
   limit?: number;
@@ -22,6 +23,7 @@ function toParams(params: Record<string, unknown>): ActionParams {
   return {
     accountId: typeof params.accountId === "string" ? params.accountId : undefined,
     accountName: typeof params.accountName === "string" ? params.accountName : undefined,
+    clientName: typeof params.clientName === "string" ? params.clientName : undefined,
     clientId: typeof params.clientId === "string" ? params.clientId : undefined,
     datePreset: typeof params.datePreset === "string" ? params.datePreset : "last_7d",
     limit: typeof params.limit === "number" ? params.limit : 50,
@@ -51,6 +53,7 @@ export async function analyzeMetaAccountAction(rawParams: Record<string, unknown
   const baseParams = {
     accountId: params.accountId,
     accountName: params.accountName,
+    clientName: params.clientName,
     clientId: params.clientId,
     datePreset: params.datePreset,
     limit: params.limit,

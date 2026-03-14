@@ -9,6 +9,7 @@ export type ResolveMetaAdAccountParams = {
   accountId?: string;
   accountName?: string;
   clientId?: string;
+  clientName?: string;
 };
 
 export type ResolvedMetaAdAccount = {
@@ -30,6 +31,59 @@ function normalizeName(value: string): string {
     .trim();
 }
 
+function scoreNameMatch(target: string, candidate: string): number {
+  const normalizedTarget = normalizeName(target);
+  const normalizedCandidate = normalizeName(candidate);
+
+  if (!normalizedTarget || !normalizedCandidate) return 0;
+  if (normalizedCandidate === normalizedTarget) return 100;
+  if (normalizedCandidate.includes(normalizedTarget)) return 80;
+  if (normalizedTarget.includes(normalizedCandidate)) return 70;
+
+  const targetTokens = normalizedTarget.split(/\s+/).filter(Boolean);
+  const candidateTokens = normalizedCandidate.split(/\s+/).filter(Boolean);
+  const overlap = targetTokens.filter((token) => candidateTokens.includes(token)).length;
+
+  if (overlap === 0) return 0;
+  return Math.round((overlap / Math.max(targetTokens.length, 1)) * 60);
+}
+
+async function resolveClientIdByName(clientName?: string): Promise<string | undefined> {
+  if (!clientName) return undefined;
+
+  const search = clientName.trim();
+  if (!search) return undefined;
+
+  const candidates = await prisma.cliente.findMany({
+    where: {
+      OR: [
+        { nome: { contains: search, mode: "insensitive" } },
+        { empresa: { contains: search, mode: "insensitive" } },
+      ],
+    },
+    select: {
+      id: true,
+      nome: true,
+      empresa: true,
+    },
+    take: 20,
+  });
+
+  if (candidates.length === 0) return undefined;
+
+  const ranked = candidates
+    .map((candidate) => ({
+      id: candidate.id,
+      score: Math.max(
+        scoreNameMatch(search, candidate.nome || ""),
+        scoreNameMatch(search, candidate.empresa || ""),
+      ),
+    }))
+    .sort((a, b) => b.score - a.score);
+
+  return ranked[0]?.score > 0 ? ranked[0].id : undefined;
+}
+
 export async function resolveMetaAdAccount(
   params: ResolveMetaAdAccountParams,
 ): Promise<ResolvedMetaAdAccount> {
@@ -40,6 +94,9 @@ export async function resolveMetaAdAccount(
     };
   }
 
+  const resolvedClientId =
+    params.clientId || (await resolveClientIdByName(params.clientName || params.accountName));
+
   const accounts = await prisma.integrationAccount.findMany({
     where: {
       provider: "META_ADS",
@@ -48,23 +105,27 @@ export async function resolveMetaAdAccount(
     orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
   });
 
-  if (params.accountName) {
-    const target = normalizeName(params.accountName);
-    const byName = accounts.find((account) =>
-      normalizeName(account.externalAccountName).includes(target),
-    );
+  const candidateAccountName = params.accountName || params.clientName;
 
-    if (byName) {
+  if (candidateAccountName) {
+    const byName = accounts
+      .map((account) => ({
+        account,
+        score: scoreNameMatch(candidateAccountName, account.externalAccountName || ""),
+      }))
+      .sort((a, b) => b.score - a.score)[0];
+
+    if (byName && byName.score > 0) {
       return {
-        accountId: byName.externalAccountId,
-        accountName: byName.externalAccountName,
+        accountId: byName.account.externalAccountId,
+        accountName: byName.account.externalAccountName,
         source: "account_name",
       };
     }
   }
 
-  if (params.clientId) {
-    const byClient = accounts.find((account) => account.clientId === params.clientId);
+  if (resolvedClientId) {
+    const byClient = accounts.find((account) => account.clientId === resolvedClientId);
     if (byClient) {
       return {
         accountId: byClient.externalAccountId,

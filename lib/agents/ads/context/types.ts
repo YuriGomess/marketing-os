@@ -13,6 +13,7 @@ export type CampaignTypeDecision = {
 export type AdsContextInput = {
   accountId?: string;
   accountName?: string;
+  clientName?: string;
   clientId?: string;
   datePreset?: string;
   days?: number;

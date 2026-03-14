@@ -105,7 +105,16 @@ export async function processAgentMessage(
   }
 
   if (route.selectedAgent === "ads") {
-    return runAdsAgent(context, route);
+    return runAdsAgent(
+      {
+        ...context,
+        metadata: {
+          ...(context.metadata || {}),
+          ...(route.extractedEntities || {}),
+        },
+      },
+      route,
+    );
   }
 
   return {

@@ -1,5 +1,11 @@
 import { analyzeMetaAccountAction } from "@/lib/actions/ads/analyze-meta-account";
 import { getMetaAdAccountsAction } from "@/lib/actions/ads/get-meta-ad-accounts";
+import { classifyCampaignAnalysisType } from "@/lib/agents/ads/context/campaign-type";
+import { fetchInsightsByLevel } from "@/lib/agents/ads/context/shared";
+import { getMetaEcommerceAnalysisContextAction } from "@/lib/agents/ads/context/ecommerce";
+import { getMetaWhatsappAnalysisContextAction } from "@/lib/agents/ads/context/whatsapp";
+import { getMetaFollowersAnalysisContextAction } from "@/lib/agents/ads/context/followers";
+import { getMetaHistoricalRoasContextAction } from "@/lib/agents/ads/context/historical-roas";
 
 type DeepContextParams = Record<string, unknown>;
 
@@ -61,6 +67,33 @@ export async function getMetaAccountDeepContextAction(params: DeepContextParams)
       ? (((relatedAccounts.data as { rows?: unknown[] }).rows || []) as unknown[])
       : [];
 
+  const campaignRows = await fetchInsightsByLevel("campaign", {
+    accountId: typeof params.accountId === "string" ? params.accountId : undefined,
+    accountName: typeof params.accountName === "string" ? params.accountName : undefined,
+    clientName: typeof params.clientName === "string" ? params.clientName : undefined,
+    clientId: typeof params.clientId === "string" ? params.clientId : undefined,
+    datePreset: typeof params.datePreset === "string" ? params.datePreset : "last_7d",
+    limit: typeof params.limit === "number" ? params.limit : 100,
+    userMessage: typeof params.userMessage === "string" ? params.userMessage : undefined,
+  });
+
+  const typeDecision = campaignRows.ok
+    ? classifyCampaignAnalysisType({
+        userMessage: typeof params.userMessage === "string" ? params.userMessage : undefined,
+        rows: campaignRows.rows,
+      })
+    : null;
+
+  const specializedContext = typeDecision
+    ? typeDecision.type === "ECOMMERCE"
+      ? await getMetaEcommerceAnalysisContextAction(params)
+      : typeDecision.type === "WHATSAPP"
+        ? await getMetaWhatsappAnalysisContextAction(params)
+        : await getMetaFollowersAnalysisContextAction(params)
+    : null;
+
+  const historicalRoas = await getMetaHistoricalRoasContextAction(params);
+
   return {
     ok: true,
     data: {
@@ -91,6 +124,26 @@ export async function getMetaAccountDeepContextAction(params: DeepContextParams)
         relatedAccountsCount: relatedRows.length,
         relatedAccounts: relatedRows.slice(0, 10),
       },
+      campaignType: typeDecision
+        ? {
+            type: typeDecision.type,
+            confidence: typeDecision.confidence,
+            reason: typeDecision.reason,
+            evidence: typeDecision.evidence,
+          }
+        : null,
+      fullMetrics:
+        specializedContext?.ok && specializedContext.data
+          ? specializedContext.data
+          : {
+              warning: "Contexto especializado indisponivel nesta resposta.",
+            },
+      historicalRoas:
+        historicalRoas?.ok && historicalRoas.data
+          ? historicalRoas.data
+          : {
+              warning: "Historico de ROAS indisponivel no momento.",
+            },
     },
   };
 }

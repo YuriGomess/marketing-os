@@ -6,6 +6,7 @@ export async function getMetaEcommerceAnalysisContextAction(params: Record<strin
   const input: AdsContextInput = {
     accountId: typeof params.accountId === "string" ? params.accountId : undefined,
     accountName: typeof params.accountName === "string" ? params.accountName : undefined,
+    clientName: typeof params.clientName === "string" ? params.clientName : undefined,
     clientId: typeof params.clientId === "string" ? params.clientId : undefined,
     datePreset: typeof params.datePreset === "string" ? params.datePreset : "last_7d",
     days: typeof params.days === "number" ? params.days : undefined,
