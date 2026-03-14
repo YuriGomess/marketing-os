@@ -29,6 +29,7 @@ export async function getMetaInsightsAction(params: Record<string, unknown>) {
     const data = await getMetaInsights({
       accountId: resolved.accountId,
       datePreset: typeof params.datePreset === "string" ? params.datePreset : undefined,
+      days: typeof params.days === "number" ? params.days : undefined,
       level:
         params.level === "account" ||
         params.level === "campaign" ||

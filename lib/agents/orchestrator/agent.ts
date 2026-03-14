@@ -61,6 +61,19 @@ function inferAgent(message: string): { selectedAgent: AgentName; matchedTerms: 
     };
   }
 
+  const looksLikeAdsAnalysis = /(campanha|campanhas|anuncio|anuncios|meta|conta|roas|ctr|cpc|cpa|orcamento)/.test(
+    normalized,
+  );
+
+  if (matchedWhatsapp.length > 0 && (matchedAds.length > 0 || looksLikeAdsAnalysis)) {
+    return {
+      selectedAgent: "ads",
+      matchedTerms: [...matchedWhatsapp, ...matchedAds],
+      reason:
+        "Solicitacao menciona WhatsApp, mas no contexto de campanhas/performance; roteado para Ads Agent.",
+    };
+  }
+
   if (matchedWhatsapp.length > 0) {
     return {
       selectedAgent: "whatsapp",

@@ -14,6 +14,13 @@ import {
   type LLMMessage,
   type LLMToolCall,
 } from "@/lib/llm/openai";
+import { classifyCampaignAnalysisType } from "@/lib/agents/ads/context/campaign-type";
+import { fetchInsightsByLevel } from "@/lib/agents/ads/context/shared";
+import { getMetaEcommerceAnalysisContextAction } from "@/lib/agents/ads/context/ecommerce";
+import { getMetaWhatsappAnalysisContextAction } from "@/lib/agents/ads/context/whatsapp";
+import { getMetaFollowersAnalysisContextAction } from "@/lib/agents/ads/context/followers";
+import { getMetaHistoricalRoasContextAction } from "@/lib/agents/ads/context/historical-roas";
+import type { CampaignAnalysisType } from "@/lib/agents/ads/context/types";
 
 type ResolvedAccount = {
   accountId: string;
@@ -30,6 +37,16 @@ type ExecutedTool = {
   tool: string;
   args: Record<string, unknown>;
   ok: boolean;
+};
+
+type AnalysisPrefetchResult = {
+  campaignType: CampaignAnalysisType;
+  confidence: number;
+  reason: string;
+  evidence: string[];
+  contextTool: string;
+  contextData: unknown;
+  historicalRoas?: unknown;
 };
 
 function parseToolArguments(rawArguments: string): Record<string, unknown> {
@@ -162,6 +179,92 @@ function toDecision(route: AgentRouteResult): OrchestratorDecision {
   };
 }
 
+async function prefetchAnalysisContext(input: {
+  context: AgentContext;
+}): Promise<AnalysisPrefetchResult | null> {
+  const baseParams = {
+    accountId:
+      typeof input.context.metadata?.accountId === "string"
+        ? input.context.metadata.accountId
+        : undefined,
+    accountName:
+      typeof input.context.metadata?.accountName === "string"
+        ? input.context.metadata.accountName
+        : undefined,
+    clientId: input.context.clientId,
+    datePreset: "last_7d",
+    limit: 100,
+    userMessage: input.context.message,
+  };
+
+  const campaignInsights = await fetchInsightsByLevel("campaign", baseParams);
+  if (!campaignInsights.ok) {
+    return null;
+  }
+
+  const typeDecision = classifyCampaignAnalysisType({
+    userMessage: input.context.message,
+    rows: campaignInsights.rows,
+  });
+
+  const typedParams = {
+    ...baseParams,
+    userMessage: input.context.message,
+  };
+
+  const contextResult =
+    typeDecision.type === "ECOMMERCE"
+      ? await getMetaEcommerceAnalysisContextAction(typedParams)
+      : typeDecision.type === "WHATSAPP"
+        ? await getMetaWhatsappAnalysisContextAction(typedParams)
+        : await getMetaFollowersAnalysisContextAction(typedParams);
+
+  if (!contextResult.ok) {
+    const errorMessage =
+      "error" in contextResult && typeof contextResult.error === "string"
+        ? contextResult.error
+        : "Falha ao montar contexto especializado.";
+
+    return {
+      campaignType: typeDecision.type,
+      confidence: typeDecision.confidence,
+      reason: typeDecision.reason,
+      evidence: typeDecision.evidence,
+      contextTool:
+        typeDecision.type === "ECOMMERCE"
+          ? "getMetaEcommerceAnalysisContext"
+          : typeDecision.type === "WHATSAPP"
+            ? "getMetaWhatsappAnalysisContext"
+            : "getMetaFollowersAnalysisContext",
+      contextData: {
+        error: errorMessage,
+      },
+    };
+  }
+
+  const shouldFetchHistoricalRoas = /roas|historic|historico|tendencia/i.test(
+    input.context.message,
+  );
+  const historicalRoas = shouldFetchHistoricalRoas
+    ? await getMetaHistoricalRoasContextAction(typedParams)
+    : undefined;
+
+  return {
+    campaignType: typeDecision.type,
+    confidence: typeDecision.confidence,
+    reason: typeDecision.reason,
+    evidence: typeDecision.evidence,
+    contextTool:
+      typeDecision.type === "ECOMMERCE"
+        ? "getMetaEcommerceAnalysisContext"
+        : typeDecision.type === "WHATSAPP"
+          ? "getMetaWhatsappAnalysisContext"
+          : "getMetaFollowersAnalysisContext",
+    contextData: contextResult.data,
+    historicalRoas: historicalRoas?.ok ? historicalRoas.data : historicalRoas,
+  };
+}
+
 export async function runAdsAgent(
   context: AgentContext,
   route: AgentRouteResult,
@@ -226,6 +329,24 @@ export async function runAdsAgent(
     };
   }
 
+  const toolsUsed: ExecutedTool[] = [];
+  let analysisPrefetch: AnalysisPrefetchResult | null = null;
+  if (route.mode === "analysis") {
+    analysisPrefetch = await prefetchAnalysisContext({ context });
+
+    if (analysisPrefetch) {
+      toolsUsed.push({
+        tool: "analysisPrefetch",
+        args: {
+          campaignType: analysisPrefetch.campaignType,
+          confidence: analysisPrefetch.confidence,
+          contextTool: analysisPrefetch.contextTool,
+        },
+        ok: true,
+      });
+    }
+  }
+
   const openaiConfig = getOpenAIConfigStatus();
 
   if (!openaiConfig.ok) {
@@ -237,13 +358,14 @@ export async function runAdsAgent(
       orchestrator,
       route,
       accountUsed: null,
-      toolsUsed: [],
+      toolsUsed,
       data: {
         stage: "llm-config-missing",
         missingEnv: openaiConfig.missingEnv,
         fallbackModel: openaiConfig.model,
+        analysisPrefetch,
         accountUsed: null,
-        toolsUsed: [],
+        toolsUsed,
       },
       error: null,
     };
@@ -264,9 +386,26 @@ export async function runAdsAgent(
     },
   ];
 
-  const toolsUsed: ExecutedTool[] = [];
   const toolResultByName = new Map<string, AgentActionResult>();
   let accountUsed: ResolvedAccount | null = null;
+
+  if (analysisPrefetch) {
+      llmMessages.splice(2, 0, {
+        role: "system",
+        content: [
+          "Contexto analitico pre-carregado para acelerar diagnostico.",
+          `Tipo identificado: ${analysisPrefetch.campaignType} (confianca ${analysisPrefetch.confidence}).`,
+          `Motivo: ${analysisPrefetch.reason}`,
+          `Tool sugerida: ${analysisPrefetch.contextTool}`,
+          `Contexto: ${JSON.stringify(analysisPrefetch.contextData)}`,
+          analysisPrefetch.historicalRoas
+            ? `ROAS historico: ${JSON.stringify(analysisPrefetch.historicalRoas)}`
+            : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      });
+  }
 
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const llmResult = await generateOpenAIResponse({
@@ -319,6 +458,7 @@ export async function runAdsAgent(
           stage: "llm-final",
           accountUsed,
           toolsUsed,
+          analysisPrefetch,
           usage: llmResult.usage,
           toolResults: Array.from(toolResultByName.entries()).map(([name, result]) => ({
             name,
