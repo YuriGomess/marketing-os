@@ -61,10 +61,12 @@ export async function GET(_: Request, context: RouteContext) {
       status: mapProviderStateToInstanceStatus(qr.status),
       qrCode: qr.qrCode || instance.qrCode,
       phoneNumber: qr.phoneNumber || instance.phoneNumber,
-      metadata:
-        qr.raw && typeof qr.raw === "object" && !Array.isArray(qr.raw)
+      metadata: {
+        ...(qr.raw && typeof qr.raw === "object" && !Array.isArray(qr.raw)
           ? (qr.raw as Record<string, unknown>)
-          : null,
+          : {}),
+        ...(qr.pairingCode ? { pairingCode: qr.pairingCode } : {}),
+      },
     });
 
     return Response.json({

@@ -18,6 +18,7 @@ type WhatsAppInstance = {
   phoneNumber: string | null;
   qrCode: string | null;
   webhookUrl: string | null;
+  metadata?: Record<string, unknown> | null;
   updatedAt: string;
   _count?: {
     conversations: number;
@@ -57,6 +58,20 @@ type WhatsAppMessage = {
 function prettyDate(input: string | null): string {
   if (!input) return "-";
   return new Date(input).toLocaleString("pt-BR");
+}
+
+function extractPairingCode(metadata: Record<string, unknown> | null | undefined): string | null {
+  if (!metadata) return null;
+  const direct = metadata.pairingCode;
+  if (typeof direct === "string" && direct.trim()) return direct.trim();
+
+  const pair = metadata.pairing;
+  if (pair && typeof pair === "object" && !Array.isArray(pair)) {
+    const fromPair = (pair as Record<string, unknown>).code;
+    if (typeof fromPair === "string" && fromPair.trim()) return fromPair.trim();
+  }
+
+  return null;
 }
 
 function statusLabel(status: InstanceStatus): string {
@@ -538,7 +553,17 @@ export function WhatsappPanel() {
                     </pre>
                   )
                 ) : (
-                  <p className="mt-2 text-sm text-muted">Sem QR code disponivel.</p>
+                  <div className="mt-2 space-y-2 text-sm text-muted">
+                    <p>Sem QR code disponivel.</p>
+                    {extractPairingCode(selectedInstance.metadata || null) ? (
+                      <div className="rounded-lg border border-border bg-panel px-2 py-2 text-slate-100">
+                        <p className="text-xs text-muted">Pairing code</p>
+                        <p className="mt-1 font-mono text-base tracking-wider">
+                          {extractPairingCode(selectedInstance.metadata || null)}
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
                 )}
               </div>
             </div>

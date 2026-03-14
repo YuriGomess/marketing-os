@@ -37,6 +37,7 @@ export type WhatsAppCreateInstanceResult = {
   externalInstanceId?: string | null;
   status: WhatsAppInstanceState;
   qrCode?: string | null;
+  pairingCode?: string | null;
   phoneNumber?: string | null;
   webhookUrl?: string | null;
   raw?: unknown;
@@ -45,6 +46,7 @@ export type WhatsAppCreateInstanceResult = {
 export type WhatsAppQrCodeResult = {
   status: WhatsAppInstanceState;
   qrCode?: string | null;
+  pairingCode?: string | null;
   phoneNumber?: string | null;
   raw?: unknown;
 };

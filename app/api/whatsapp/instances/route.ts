@@ -79,9 +79,12 @@ export async function POST(req: Request) {
         phoneNumber: created.phoneNumber || null,
         webhookUrl: created.webhookUrl || instance.webhookUrl,
         metadata:
-          created.raw && typeof created.raw === "object" && !Array.isArray(created.raw)
-            ? (created.raw as Record<string, unknown>)
-            : null,
+          {
+            ...(created.raw && typeof created.raw === "object" && !Array.isArray(created.raw)
+              ? (created.raw as Record<string, unknown>)
+              : {}),
+            ...(created.pairingCode ? { pairingCode: created.pairingCode } : {}),
+          },
       });
 
       return Response.json({ ok: true, data: updated }, { status: 201 });

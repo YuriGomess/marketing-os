@@ -55,10 +55,15 @@ export async function POST(_: Request, context: RouteContext) {
       status: mapProviderStateToInstanceStatus(status.status),
       qrCode: qr.qrCode || null,
       phoneNumber: status.phoneNumber || qr.phoneNumber || instance.phoneNumber,
-      metadata:
-        status.raw && typeof status.raw === "object" && !Array.isArray(status.raw)
+      metadata: {
+        ...(status.raw && typeof status.raw === "object" && !Array.isArray(status.raw)
           ? (status.raw as Record<string, unknown>)
-          : null,
+          : {}),
+        ...(qr.raw && typeof qr.raw === "object" && !Array.isArray(qr.raw)
+          ? { qrSource: qr.raw as Record<string, unknown> }
+          : {}),
+        ...(qr.pairingCode ? { pairingCode: qr.pairingCode } : {}),
+      },
     });
 
     return Response.json({ ok: true, data: updated });
